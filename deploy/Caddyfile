@@ -1,0 +1,43 @@
+# Caddy: автоматический HTTPS (Let's Encrypt) и проксирование на приложение. Домен берётся из PUBLIC_DOMAIN в .env.
+#
+# ЗАМЕНИТЬ перед запуском: в .env задать PUBLIC_DOMAIN=<ваш домен> (например, bot.mycompany.example), без https://.
+# DNS-запись A (и AAAA, если есть IPv6) этого домена должна указывать на IP сервера, порты 80 и 443 открыты в файрволе.
+# Пока домен не указывает на сервер, сертификат не выпустится (ошибки в `docker compose logs caddy`) — это ожидаемо.
+
+{
+	# Адрес для уведомлений Let's Encrypt о проблемах с сертификатом. ЗАМЕНИТЬ на свой email (или удалить строку).
+	email paultarasenko@gmail.com
+
+	# Журнал Caddy: в адресе запроса стоит секрет webhook (/tg/<id>/<секрет>, /sa/<секрет>) — прячем его.
+	# Журнал доступа (директива log в блоке сайта) НЕ включайте по той же причине.
+	log {
+		output stderr
+		format filter {
+			wrap console
+			fields {
+				request>uri regexp ^/(tg|sa)/.* /$1/***
+			}
+		}
+	}
+}
+
+{$PUBLIC_DOMAIN} {
+	request_body {
+		max_size 2MB   # апдейты Telegram малы; приложение само отвечает 413 при > 1 МБ
+	}
+
+	# Только то, что нужно снаружи: апдейты Telegram и проверка живости.
+	@telegram path /tg/* /sa/*
+	handle @telegram {
+		reverse_proxy app:8080
+	}
+
+	handle /health {
+		reverse_proxy app:8080
+	}
+
+	# Остальное (в том числе /ready) наружу не отдаём.
+	handle {
+		respond "Not found" 404
+	}
+}

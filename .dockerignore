@@ -1,0 +1,23 @@
+.git
+.gitignore
+__pycache__
+*.pyc
+.pytest_cache
+.env*
+tests/
+README.md
+ARCHITECTURE.md
+venv/
+.venv/
+.vscode/
+.idea/
+# этап 12A: в образ не попадают дампы, резервные копии, служебные скрипты и документация
+backups/
+**/*.sql
+**/*.sql.gz
+**/*.dump
+run.log
+tools/
+deploy/
+docs/
+docker-compose*.yml

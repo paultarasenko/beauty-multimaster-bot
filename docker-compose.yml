@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: beauty_bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Redis — только хранилище FSM (состояния диалогов, этап 7). Наружу не публикуется.
+  # AOF (everysec) + том: диалоги переживают перезапуск Redis (потеря не больше ~1 с записей).
+  # Все ключи с TTL; maxmemory с volatile-lru не даёт Redis расти бесконечно (состояния старых диалогов вытесняются первыми).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/beauty_bot
+      REDIS_URL: redis://redis:6379/0
+    healthcheck:
+      # webhook: GET /ready (БД и Redis); polling: HTTP-сервера нет, проверка всегда успешна (см. app/healthcheck.py)
+      test: ["CMD", "python", "-m", "app.healthcheck"]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 40s
+    ports:
+      # Нужен только при RUN_MODE=webhook (за обратным прокси с TLS); в режиме polling порт никто не слушает.
+      - "${WEBHOOK_PORT:-8080}:${WEBHOOK_PORT:-8080}"
+
+volumes:
+  postgres_data:
+  redis_data:

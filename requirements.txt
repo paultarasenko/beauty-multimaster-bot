@@ -1,0 +1,14 @@
+aiogram==3.15.0
+redis==5.0.8  # хранилище FSM (этап 7); версия ограничена зависимостью aiogram 3.15 (redis<5.1)
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+pydantic-settings==2.6.1
+apscheduler==3.10.4
+python-dotenv==1.0.1
+tzdata==2024.2
+openpyxl==3.1.5
+Pillow==11.0.0
+fastapi==0.142.2
+uvicorn==0.54.0
+cryptography==46.0.6

@@ -1,0 +1,30 @@
+# Тестовые Postgres и Redis для pytest. Запуск: docker compose -f docker-compose.test.yml up -d --wait
+# Порты и имя БД совпадают с TEST_DATABASE_URL / TEST_REDIS_URL по умолчанию (tests/conftest.py, tests/fsm_utils.py).
+services:
+  postgres-test:
+    image: postgres:16
+    command: ["postgres", "-c", "max_connections=300"]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: beauty_bot_test
+    ports:
+      - "5434:5432"
+    tmpfs:
+      - /var/lib/postgresql/data  # данные тестов не нужны после остановки — и так быстрее
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d beauty_bot_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  redis-test:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]  # без персистентности: данные тестов не нужны
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

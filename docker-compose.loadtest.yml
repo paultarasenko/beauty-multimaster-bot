@@ -1,0 +1,109 @@
+# Нагрузочный стенд (этап 12B): приложение в webhook-режиме + своя PostgreSQL (база loadtest) + свой Redis + поддельный Telegram.
+# Подробности и команды — tools/loadtest/README.md. Запуск:  docker compose -f docker-compose.loadtest.yml up -d --build --wait
+#
+# НЕ пересекается с рабочими стеками: свой проект (name), свои тома (bbot-loadtest_*), своя сеть, другие порты на хосте
+# (в 127.0.0.1 only: 55432 база, 18080 приложение, 18081 поддельный Telegram; рабочие используют 5433, 5434, 6380, 80, 443).
+# .env рабочего проекта НЕ подключается (env_file нет): настоящих токенов в стенде нет и быть не может.
+# Ключ шифрования ниже — одноразовый, только для этого стенда и фиктивных токенов; к рабочим ключам отношения не имеет.
+
+name: bbot-loadtest
+
+x-app-image: &app-image
+  build: .
+  image: bbot-loadtest-app
+
+x-loadtest-env: &loadtest-env
+  BOT_TOKEN_ENCRYPTION_KEY: 502hDQDay4rGq1J5SwWqpifPdsllqaESDpMPbQyaoc8=
+  LOADTEST_DATABASE_URL: postgresql+asyncpg://loadtest:loadtest@postgres-loadtest:5432/loadtest
+  LOADTEST_REDIS_URL: redis://redis-loadtest:6379/0
+  LOADTEST_FAKE_URL: http://fake-telegram:8081
+  LOADTEST_APP_URL: http://app:8080
+  LOADTEST_POLL_SECONDS: "${REMINDER_POLL_INTERVAL_SECONDS:-60}"
+
+services:
+  postgres-loadtest:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: loadtest
+      POSTGRES_PASSWORD: loadtest
+      POSTGRES_DB: loadtest
+    ports:
+      - "127.0.0.1:55432:5432"   # для psql с хоста (необязательно): postgresql://loadtest:loadtest@127.0.0.1:55432/loadtest
+    volumes:
+      - loadtest_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U loadtest -d loadtest"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # Как в рабочем стеке: AOF и maxmemory 256mb (volatile-lru) — чтобы размер и поведение Redis были сопоставимы.
+  redis-loadtest:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
+    volumes:
+      - loadtest_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  fake-telegram:
+    <<: *app-image
+    command: ["python", "-m", "tools.loadtest.fake_telegram", "--port", "8081"]
+    volumes:
+      - ./tools:/app/tools   # tools/ не входит в образ (.dockerignore)
+    ports:
+      - "127.0.0.1:18081:8081"   # /__stats и /__config с хоста: curl http://127.0.0.1:18081/__stats
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/__stats', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  app:
+    <<: *app-image
+    depends_on:
+      postgres-loadtest:
+        condition: service_healthy
+      redis-loadtest:
+        condition: service_healthy
+      fake-telegram:
+        condition: service_healthy
+    environment:
+      RUN_MODE: webhook
+      WEBHOOK_PORT: "8080"
+      PUBLIC_BASE_URL: https://loadtest.invalid   # нужен только для проверки настроек; наружу приложение не регистрируется
+      DATABASE_URL: postgresql+asyncpg://loadtest:loadtest@postgres-loadtest:5432/loadtest
+      REDIS_URL: redis://redis-loadtest:6379/0
+      BOT_TOKEN_ENCRYPTION_KEY: 502hDQDay4rGq1J5SwWqpifPdsllqaESDpMPbQyaoc8=
+      TELEGRAM_API_BASE: http://fake-telegram:8081
+      SUPERADMIN_BOT_TOKEN: ""
+      TIMEZONE: Europe/Minsk
+      # Интервал планировщика: как в рабочем стеке (60). Меняется только для отладки: REMINDER_POLL_INTERVAL_SECONDS=10 docker compose ... up -d
+      REMINDER_POLL_INTERVAL_SECONDS: "${REMINDER_POLL_INTERVAL_SECONDS:-60}"
+    ports:
+      - "127.0.0.1:18080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.healthcheck"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+      start_period: 60s   # на старте применяются миграции
+    stop_grace_period: 60s
+
+  # Запускается только командой run (profile tools): seed, прогоны, отчёт. Рабочая папка /app, tools/ подключён с хоста — результаты в tools/loadtest/results/.
+  runner:
+    <<: *app-image
+    profiles: ["tools"]
+    depends_on:
+      app:
+        condition: service_healthy
+    environment: *loadtest-env
+    volumes:
+      - ./tools:/app/tools
+
+volumes:
+  loadtest_pg:
+  loadtest_redis:

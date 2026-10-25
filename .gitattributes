@@ -1,0 +1,5 @@
+# Оболочечные скрипты и конфигурации для Linux/Docker всегда с окончаниями строк LF (иначе в Git Bash: «bash\r: No such file»).
+*.sh text eol=lf
+docker-entrypoint.sh text eol=lf
+Caddyfile text eol=lf
+*.yml text eol=lf

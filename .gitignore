@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+
+# Секреты и локальные копии окружения (.env, .env.bak, .env.prod ...); пример без секретов остаётся в git
+.env*
+!.env.example
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+.vscode/
+.idea/
+run.log
+
+backups/
+*.dump
+*.sql.gz
+
+tools/loadtest/results/*
+!tools/loadtest/results/.gitkeep

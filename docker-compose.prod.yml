@@ -1,0 +1,105 @@
+# Рабочий запуск (этап 12A): один экземпляр приложения в webhook-режиме + PostgreSQL 16 + Redis + Caddy (автоматический HTTPS).
+# Запуск:  docker compose -f docker-compose.prod.yml up -d --build
+# Проверка конфигурации (без запуска):  docker compose -f docker-compose.prod.yml config --quiet
+#
+# Наружу открыты ТОЛЬКО порты 80 и 443 (Caddy). PostgreSQL и Redis не публикуются: доступны только внутри сети compose.
+# Все значения берутся из .env (см. .env.example, раздел «PRODUCTION»); обязательные без значения — compose отказывается стартовать.
+#
+# Один экземпляр app: единый планировщик напоминаний рассчитан на один процесс. НЕ запускайте `--scale app=2` и
+# не поднимайте второй стек с той же базой: напоминания продублируются.
+
+name: bbot-prod   # отдельное имя проекта => свои тома (bbot-prod_postgres_data, ...), старый стек docker-compose.yml не затрагивается
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"   # ротация логов: до 5 файлов по 10 МБ на контейнер
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env (только буквы и цифры)}
+      POSTGRES_DB: ${POSTGRES_DB:-beauty_bot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *default-logging
+    # ports: не публиковать! Доступ к базе — только через `docker compose exec postgres ...`
+
+  # Redis — только хранилище FSM (состояния диалогов). AOF + том: диалоги переживают перезапуск.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--maxmemory", "256mb", "--maxmemory-policy", "volatile-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    logging: *default-logging
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Значения ниже ПЕРЕОПРЕДЕЛЯЮТ одноимённые строки из .env: боевой стек не может случайно уйти в polling или в чужую базу.
+      RUN_MODE: webhook
+      WEBHOOK_PORT: "8080"
+      PUBLIC_BASE_URL: https://${PUBLIC_DOMAIN:?задайте PUBLIC_DOMAIN в .env (домен без https://)}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-beauty_bot}
+      REDIS_URL: redis://redis:6379/0
+      BOT_TOKEN_ENCRYPTION_KEY: ${BOT_TOKEN_ENCRYPTION_KEY:?задайте BOT_TOKEN_ENCRYPTION_KEY в .env (без него токены ботов не расшифровать)}
+    expose:
+      - "8080"   # только для Caddy внутри сети compose; на хост порт не публикуется
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.healthcheck"]   # GET /ready: база и Redis
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 60s   # на старте применяются миграции
+    stop_grace_period: 60s   # планировщик ждёт текущие отправки до 30 с
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:?задайте PUBLIC_DOMAIN в .env}
+    ports:
+      - "80:80"      # нужен для выпуска сертификата (проверка домена) и редиректа на https
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data     # сертификаты: не удаляйте том, у Let's Encrypt есть лимиты на выпуск
+      - caddy_config:/config
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
