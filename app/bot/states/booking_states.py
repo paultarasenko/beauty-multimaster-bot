@@ -6,6 +6,7 @@ class BookingFSM(StatesGroup):
     select_date = State()
     select_time = State()
     confirm = State()
+    share_phone = State()  # после записи (или по кнопке в «Мои записи»): ждём контакт или «Не сейчас»
 
 
 class CheckTimeFSM(StatesGroup):

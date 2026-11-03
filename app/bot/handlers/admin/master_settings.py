@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.keyboards.admin_keyboards import BTN_SETTINGS
 from app.bot.keyboards.callback_data import AdminSettingsCallback, MyBotCallback
+from app.bot.keyboards.client_keyboards import CALENDAR_ARROW_BLANK
 from app.bot.middlewares.admin_filter import IsAdminFilter
 from app.bot.states.booking_states import AdminSettingsFSM
 from app.database.repositories.master_settings_repository import MasterSettingsRepository
@@ -62,7 +63,9 @@ router.callback_query.filter(IsAdminFilter())
 STALE = "Эта кнопка устарела. Откройте «⚙️ Настройки» заново."
 QUICK_CURRENCIES = (DEFAULT_CURRENCY, "RUB", "USD", "EUR")
 # Разделы меню настроек (field у action="menu").
-SECTIONS = ("main", "reminders", "limits", "texts", "quiet")
+# «main» и «main2» — первая и вторая страницы главного экрана (список кнопок не помещался в одну колонку).
+SECTIONS = ("main", "main2", "reminders", "limits", "texts", "quiet")
+SETTINGS_PAGES = 2
 # Сетка часов тихого режима: 24 часа, 6 в ряду. Начало обычно вечером, конец утром, поэтому сетки открываются с 18 и с 05:
 # частые варианты (20–00 и 06–10) попадают в первые ряды.
 QUIET_GRID_FIRST_HOUR = {"start": 18, "end": 5}
@@ -105,29 +108,40 @@ def main_text(s: MasterSettingsData, quiet: QuietModeData | None = None) -> str:
         f"🔔 Напоминания: клиенту за 24 ч — {_onoff(s.reminder_24h_enabled)}, за 2 ч — {_onoff(s.reminder_2h_enabled)}, "
         f"вам за 2 ч — {_onoff(s.master_reminder_2h_enabled)}\n"
         f"📋 Лимит записей клиента: {s.max_active_bookings}; предупреждение после {s.cancel_streak_limit} отмен подряд\n"
-        f"🔄 Перенос записи клиентом: {_onoff(s.allow_reschedule)}\n"
         f"⭐ Отзывы клиентов: {_onoff(s.allow_reviews)}\n"
+        f"📱 Запрос сотового номера: {_onoff(s.ask_phone_enabled)}\n"
         f"💱 Валюта: {escape(s.currency)}\n\n"
         "Изменения действуют для новых записей и сообщений; уже созданные записи не меняются."
     )
 
 
-def main_keyboard(s: MasterSettingsData, quiet: QuietModeData | None = None) -> InlineKeyboardMarkup:
+def _page_nav(page: int) -> list[InlineKeyboardButton]:
+    """Нижний ряд листания страниц настроек, как в календаре: ◀️ 1/2 ▶️. Недоступная стрелка — пустая кнопка."""
+    blank = _btn(CALENDAR_ARROW_BLANK, "noop")
+    prev_button = _btn("◀️", "menu", "main") if page > 1 else blank
+    next_button = _btn("▶️", "menu", "main2") if page < SETTINGS_PAGES else blank
+    return [prev_button, _btn(f"{page}/{SETTINGS_PAGES}", "noop"), next_button]
+
+
+def main_keyboard(s: MasterSettingsData, quiet: QuietModeData | None = None, page: int = 1) -> InlineKeyboardMarkup:
     quiet_label = "🌙 Тихий режим" if quiet is None else f"🌙 Тихий режим: {_quiet_summary(quiet)}"
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
+    if page == 1:
+        rows = [
             [_btn(f"🕐 Интервал записи: {s.slot_interval_minutes} мин", "menu", "interval")],
             [_btn("🔔 Напоминания", "menu", "reminders")],
             [_btn(quiet_label, "menu", "quiet")],
             [_btn("📋 Лимиты записей", "menu", "limits")],
-            [_btn(f"🔄 Перенос клиентом: {_onoff(s.allow_reschedule)}", "toggle", "allow_reschedule")],
             [_btn(f"⭐ Отзывы клиентов: {_onoff(s.allow_reviews)}", "toggle", "allow_reviews")],
+        ]
+    else:
+        rows = [
+            [_btn(f"📱 Запрос сотового номера: {_onoff(s.ask_phone_enabled)}", "toggle", "ask_phone_enabled", "main2")],
             [_btn(f"💱 Валюта: {s.currency}", "currency")],
             [_btn("✍️ Тексты сообщений", "menu", "texts")],
             [_btn("🖼 Фото профиля", "photo")],
             [InlineKeyboardButton(text="🤖 Мой бот", callback_data=MyBotCallback(action="show").pack())],
         ]
-    )
+    return InlineKeyboardMarkup(inline_keyboard=[*rows, _page_nav(page)])
 
 
 def quiet_text(quiet: QuietModeData, active_now: bool, pending: int) -> str:
@@ -267,7 +281,7 @@ def texts_menu_keyboard(s: MasterSettingsData) -> InlineKeyboardMarkup:
         [_btn(f"{title}{' ✏️' if getattr(s, field) is not None else ''}", "text", field)]
         for field, title in TEXT_FIELDS.items()
     ]
-    rows.append([_btn("⬅️ Назад", "menu", "main")])
+    rows.append([_btn("⬅️ Назад", "menu", "main2")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -314,7 +328,7 @@ def currency_text(s: MasterSettingsData) -> str:
 
 def currency_keyboard() -> InlineKeyboardMarkup:
     quick = [_btn(code, "set", "currency", code) for code in QUICK_CURRENCIES]
-    return InlineKeyboardMarkup(inline_keyboard=[quick, [_btn("⬅️ Назад", "menu", "main")]])
+    return InlineKeyboardMarkup(inline_keyboard=[quick, [_btn("⬅️ Назад", "menu", "main2")]])
 
 
 def photo_text() -> str:
@@ -330,7 +344,7 @@ def photo_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [_btn("📤 Загрузить / заменить фото", "photo_ask")],
             [_btn("🗑 Удалить фото", "photo_delete")],
-            [_btn("⬅️ Назад", "menu", "main")],
+            [_btn("⬅️ Назад", "menu", "main2")],
         ]
     )
 
@@ -368,9 +382,9 @@ async def _render_section(
         text, markup = texts_menu_text(), texts_menu_keyboard(s)
     elif section == "currency":
         text, markup = currency_text(s), currency_keyboard()
-    else:
+    else:  # «main» и «main2»: первая и вторая страницы главного экрана
         quiet = await load_quiet_mode(tenant.session, tenant.master_id) if tenant.session is not None else None
-        text, markup = main_text(s, quiet), main_keyboard(s, quiet)
+        text, markup = main_text(s, quiet), main_keyboard(s, quiet, page=2 if section == "main2" else 1)
     await _show(target, prefix + text, markup, edit=edit)
 
 
@@ -405,6 +419,12 @@ async def _save(session: AsyncSession, tenant: TenantContext, **values) -> None:
 async def open_settings(message: Message, state: FSMContext, tenant: TenantContext) -> None:
     await state.clear()
     await _render_section(message, "main", tenant, edit=False)
+
+
+@router.callback_query(AdminSettingsCallback.filter(F.action == "noop"))
+async def page_label_pressed(callback: CallbackQuery) -> None:
+    """Пустая стрелка и «1/2» в ряду листания ничего не делают."""
+    await callback.answer()
 
 
 @router.callback_query(AdminSettingsCallback.filter(F.action == "menu"))
@@ -457,7 +477,9 @@ async def toggle_value(
         return
     current = getattr(await tenant.get_settings(), field)
     await _save(session, tenant, **{field: validate_setting(field, not current)})
-    await _render_section(message, "reminders" if callback_data.value == "reminders" else "main", tenant, edit=True)
+    # После переключения остаёмся там, откуда нажали: в «Напоминаниях» или на второй странице настроек.
+    back_to = callback_data.value if callback_data.value in ("reminders", "main2") else "main"
+    await _render_section(message, back_to, tenant, edit=True)
     await callback.answer("Сохранено.")
 
 
@@ -481,7 +503,7 @@ async def receive_currency(message: Message, state: FSMContext, session: AsyncSe
         return
     await _save(session, tenant, currency=currency)
     await state.clear()
-    await _render_section(message, "main", tenant, edit=False, prefix="✅ Валюта сохранена.\n\n")
+    await _render_section(message, "main2", tenant, edit=False, prefix="✅ Валюта сохранена.\n\n")
 
 
 @router.callback_query(AdminSettingsCallback.filter(F.action == "text"))

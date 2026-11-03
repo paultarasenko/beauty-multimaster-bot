@@ -1,3 +1,5 @@
+import datetime as dt
+
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -99,6 +101,31 @@ class UserRepository(MasterScopedRepository):
         await self.session.flush()
         await self._link_to_master(user)
         return user
+
+    async def get_phone(self, user_id: int) -> str | None:
+        """Телефон клиента, который он оставил именно этому мастеру. None — номер ещё не запрашивали."""
+        client = await self.get_client(user_id)
+        return client.phone if client is not None else None
+
+    async def set_phone(self, user_id: int, phone: str) -> None:
+        """Сохраняет подтверждённый телефон клиента у этого мастера (у других мастеров номер не появляется)."""
+        client = await self.get_client(user_id)
+        if client is None:
+            return
+        client.phone = phone
+        await self.session.flush()
+
+    async def was_phone_offered(self, user_id: int) -> bool:
+        """Бот уже предлагал этому клиенту поделиться номером (после первой записи)."""
+        client = await self.get_client(user_id)
+        return client is not None and client.phone_offered_at is not None
+
+    async def mark_phone_offered(self, user_id: int) -> None:
+        client = await self.get_client(user_id)
+        if client is None or client.phone_offered_at is not None:
+            return
+        client.phone_offered_at = dt.datetime.now(dt.timezone.utc)
+        await self.session.flush()
 
     async def set_admin_panel_mode(self, telegram_id: int, value: bool) -> None:
         """Персистентно сохраняет, в каком меню сейчас владелец этого мастера (панель мастера / клиентский режим).

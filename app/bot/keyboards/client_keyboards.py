@@ -12,6 +12,7 @@ from app.bot.keyboards.callback_data import (
     DatesPageCallback,
     MasterRequestCallback,
     NavCallback,
+    PhoneCallback,
     PortfolioCallback,
     ReviewRatingCallback,
     ReviewsCallback,
@@ -35,6 +36,27 @@ def main_menu_keyboard(has_active_booking: bool, is_admin: bool = False) -> Repl
     if is_admin:
         rows.append([KeyboardButton(text="👑 Профиль мастера")])
     return ReplyKeyboardMarkup(keyboard=rows, resize_keyboard=True)
+
+
+def phone_request_keyboard() -> ReplyKeyboardMarkup:
+    """«Да» / «Не сейчас». request_contact работает только в кнопке обычной клавиатуры, в инлайн-кнопке его нет."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📱 Да, поделиться номером", request_contact=True)],
+            [KeyboardButton(text="Не сейчас")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+
+def share_phone_keyboard() -> InlineKeyboardMarkup:
+    """Кнопка в «Мои записи»: клиент передумал и хочет оставить номер."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📱 Оставить номер мастеру", callback_data=PhoneCallback(action="share").pack())]
+        ]
+    )
 
 
 def info_menu_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:

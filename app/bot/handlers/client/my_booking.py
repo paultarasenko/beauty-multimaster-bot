@@ -18,6 +18,7 @@ from app.bot.keyboards.callback_data import (
 from app.bot.keyboards.client_keyboards import (
     cancel_confirm_keyboard,
     my_booking_keyboard,
+    share_phone_keyboard,
     times_keyboard,
 )
 from app.bot.states.booking_states import RescheduleFSM
@@ -70,6 +71,9 @@ def _format_booking(b, tz: dt.tzinfo, currency: str = DEFAULT_CURRENCY) -> str:
     )
 
 
+PHONE_HINT_TEXT = "Чтобы мастер мог связаться с вами при необходимости, оставьте номер телефона."
+
+
 @router.message(F.text == "📋 Мои записи")
 async def show_my_booking(message: Message, session: AsyncSession, tenant: TenantContext) -> None:
     user_repo = UserRepository(session, tenant.master_id)
@@ -81,8 +85,12 @@ async def show_my_booking(message: Message, session: AsyncSession, tenant: Tenan
     tz = await get_master_tz(session, tenant.master_id)
     booking_repo = BookingRepository(session, tenant.master_id)
     upcoming = await booking_repo.get_user_upcoming(user.id, dt.datetime.now(tz))
+    # Кнопка «Оставить номер мастеру» видна, пока номера нет (клиент мог отказаться и передумать) и мастер включил запрос.
+    phone_missing = (await tenant.get_settings()).ask_phone_enabled and await user_repo.get_phone(user.id) is None
     if not upcoming:
-        await message.answer("⚠️ У вас пока нет активных записей.")
+        await message.answer(
+            "⚠️ У вас пока нет активных записей.", reply_markup=share_phone_keyboard() if phone_missing else None
+        )
         return
 
     contact_username = await get_admin_contact_username(message.bot, tenant.master)
@@ -93,6 +101,9 @@ async def show_my_booking(message: Message, session: AsyncSession, tenant: Tenan
             _format_booking(b, tz, master_settings.currency),
             reply_markup=my_booking_keyboard(b.id, contact_username, master_settings.allow_reschedule),
         )
+
+    if phone_missing:
+        await message.answer(PHONE_HINT_TEXT, reply_markup=share_phone_keyboard())
 
 
 @router.callback_query(BookingActionCallback.filter(F.action == "cancel"))

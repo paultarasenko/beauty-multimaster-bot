@@ -53,6 +53,7 @@ NO_ENTITY: dict[str, str] = {
     "ConfirmCallback": "yes/edit внутри FSM текущего пользователя",
     "ScheduleBookCallback": "дата",
     "NavCallback": "навигация",
+    "PhoneCallback": "«share»: клиент сам оставляет номер, id сущностей нет (номер пишется текущему пользователю)",
     "AdminBookingsPageCallback": "номер страницы",
     "AdminScheduleCallback": "действие над расписанием мастера апдейта",
     "AdminAboutCallback": "поле профиля мастера апдейта",

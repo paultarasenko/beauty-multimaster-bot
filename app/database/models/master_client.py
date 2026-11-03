@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.models.base import Base, TimestampMixin
@@ -36,3 +36,9 @@ class MasterClient(Base, TimestampMixin):
     # «ℹ️ Информация», «⬅️ Назад» и т.п. одинаковы в обоих меню. Хранится у связи с мастером, поэтому человек, который
     # владелец мастера A и клиент мастера B, имеет независимые режимы в двух ботах.
     is_in_admin_panel: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Номер телефона клиента, подтверждённый Telegram (кнопка «Поделиться номером»). Хранится у связи с мастером,
+    # а не в users: номер, оставленный одному мастеру, не должен быть виден другому. NULL — номер ещё не запрашивали.
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Когда боту уже предлагали поделиться номером (после первой записи). Не NULL — сами больше не спрашиваем:
+    # «Не сейчас» или молчание считаем отказом. Передумать клиент может сам, кнопкой в «Мои записи».
+    phone_offered_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

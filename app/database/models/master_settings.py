@@ -55,6 +55,8 @@ class MasterSettings(Base, TimestampMixin):
 
     allow_reschedule: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
     allow_reviews: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text("true"))
+    # Запрос сотового номера у клиентов (после первой записи и кнопкой в «Мои записи»). По умолчанию выключен.
+    ask_phone_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
 
     currency: Mapped[str] = mapped_column(String(8), nullable=False, default="BYN", server_default="BYN")
 

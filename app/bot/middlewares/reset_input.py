@@ -11,7 +11,7 @@ from app.bot.keyboards.admin_keyboards import (
     admin_stats_menu_keyboard,
 )
 from app.bot.keyboards.client_keyboards import info_menu_keyboard, main_menu_keyboard
-from app.bot.states.booking_states import ContactMasterFSM, MasterReplyFSM, MasterRequestFSM
+from app.bot.states.booking_states import BookingFSM, ContactMasterFSM, MasterReplyFSM, MasterRequestFSM
 from app.services.limit_request_service import deliver_decision
 from app.tenancy import is_owner
 
@@ -50,10 +50,16 @@ class ResetInputOnMenuPressMiddleware(BaseMiddleware):
     ) -> Any:
         raw_state = data.get("raw_state")
         tenant = data.get("tenant")  # кладёт TenantMiddleware (update-уровень, раньше этого middleware)
-        # Клиент, который пишет мастеру (запрос на запись сверх лимита), тоже может нажать кнопку меню посреди ввода.
+        # Клиент, который пишет мастеру (запрос на запись сверх лимита) или делится номером при записи, тоже может
+        # нажать кнопку меню посреди ввода.
         is_input_state = raw_state is not None and event.from_user is not None and (
             (tenant is not None and is_owner(tenant.master, event.from_user.id))
-            or raw_state in (MasterRequestFSM.waiting_message.state, ContactMasterFSM.waiting_message.state)
+            or raw_state
+            in (
+                MasterRequestFSM.waiting_message.state,
+                ContactMasterFSM.waiting_message.state,
+                BookingFSM.share_phone.state,
+            )
         )
         if is_input_state:
             text = (event.text or "").strip()

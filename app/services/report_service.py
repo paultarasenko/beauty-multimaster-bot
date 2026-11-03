@@ -42,6 +42,7 @@ REPORT_HEADER = [
     "Посещений",
     "Отмен",
     "Контакт",
+    "Телефон",
     "Создана",
     "Отменена",
 ]
@@ -74,6 +75,15 @@ def _client_contact(user: User | None, manual_contact: str | None, is_manual: bo
     if user and user.username:
         return f"@{user.username}"
     return "—"
+
+
+def _client_phone(phone: str | None, manual_contact: str | None, is_manual: bool = False) -> str:
+    if manual_contact:
+        # Ручная запись: мастер вводит телефон или @username. Всё, что не @username, это телефон.
+        return "—" if manual_contact.startswith("@") else manual_contact
+    if is_manual:
+        return "—"
+    return phone or "—"
 
 
 def _client_key(booking: Booking) -> str:
@@ -122,6 +132,20 @@ async def _fetch_users_by_ids(session: AsyncSession, master_id: int, user_ids: s
     return {u.id: u for u in result.scalars().all()}
 
 
+async def _fetch_phones_by_user_ids(session: AsyncSession, master_id: int, user_ids: set[int]) -> dict[int, str]:
+    """Телефоны клиентов этого мастера (master_clients.phone). Кто номер не оставлял, того в словаре нет."""
+    if not user_ids:
+        return {}
+    result = await session.execute(
+        select(MasterClient.user_id, MasterClient.phone).where(
+            MasterClient.master_id == master_id,
+            MasterClient.user_id.in_(user_ids),
+            MasterClient.phone.is_not(None),
+        )
+    )
+    return {user_id: phone for user_id, phone in result.all()}
+
+
 def _force_text_cells(ws) -> None:
     """openpyxl превращает любую строку, начинающуюся с «=», в формулу. В отчёт попадает пользовательский текст
     (имя в Telegram, название услуги, контакт), поэтому «=HYPERLINK(...)» в имени клиента исполнялся бы в Excel
@@ -144,8 +168,8 @@ def _autosize_columns(ws, rows: list[list], header: list[str]) -> None:
 async def build_report_workbook(
     session: AsyncSession, master_id: int, tz: dt.tzinfo, period: str, now: dt.datetime, currency: str = DEFAULT_CURRENCY
 ) -> tuple[BytesIO, str]:
-    """Строит .xlsx с одним листом «Отчёт»: колонки A–K (Дата, Время, Услуга, Сумма, Клиент,
-    Статус, Посещений, Отмен, Контакт, Создана, Отменена), по одной строке на бронь, затронутую
+    """Строит .xlsx с одним листом «Отчёт»: колонки A–L (Дата, Время, Услуга, Сумма, Клиент,
+    Статус, Посещений, Отмен, Контакт, Телефон, Создана, Отменена), по одной строке на бронь, затронутую
     за выбранный period: визит в этот период, создание записи или её отмена в этот период.
 
     «Посещений» и «Отмен» — счётчики по клиенту в рамках того же period (не за всё время).
@@ -162,6 +186,7 @@ async def build_report_workbook(
 
     needed_user_ids = {b.user_id for b in period_bookings}
     users_by_id = await _fetch_users_by_ids(session, master_id, needed_user_ids)
+    phones_by_user_id = await _fetch_phones_by_user_ids(session, master_id, needed_user_ids)
 
     # Посещения/отмены по клиенту — считаем только по броням из этого же периода.
     client_counts: dict[str, _ClientAgg] = {}
@@ -204,6 +229,9 @@ async def build_report_workbook(
                 agg.visits,
                 agg.cancels,
                 _client_contact(user, b.manual_client_contact, is_manual=bool(b.manual_client_name)),
+                _client_phone(
+                    phones_by_user_id.get(b.user_id), b.manual_client_contact, is_manual=bool(b.manual_client_name)
+                ),
                 to_local(b.created_at, tz).strftime("%d.%m.%Y %H:%M"),
                 (
                     to_local(b.updated_at, tz).strftime("%d.%m.%Y %H:%M")
@@ -228,8 +256,8 @@ async def build_report_workbook(
             ws.cell(row=row_idx, column=6).fill = fill
 
     total_rows = [
-        ["Фактический доход", "", "", format_money(actual_revenue, currency), "", "", "", "", "", "", ""],
-        ["Ожидаемый доход", "", "", format_money(expected_revenue, currency), "", "", "", "", "", "", ""],
+        ["Фактический доход", "", "", format_money(actual_revenue, currency), "", "", "", "", "", "", "", ""],
+        ["Ожидаемый доход", "", "", format_money(expected_revenue, currency), "", "", "", "", "", "", "", ""],
     ]
     for total_row in total_rows:
         ws.append(total_row)

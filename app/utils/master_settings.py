@@ -43,6 +43,7 @@ BOOL_FIELDS = {
     "master_reminder_2h_enabled": "Напоминание мастеру за 2 часа",
     "allow_reschedule": "Перенос записи клиентом",
     "allow_reviews": "Отзывы клиентов",
+    "ask_phone_enabled": "Запрос сотового номера",
 }
 
 
@@ -62,6 +63,7 @@ class MasterSettingsData:
     cancel_streak_limit: int = DEFAULT_CANCEL_STREAK_LIMIT
     allow_reschedule: bool = True
     allow_reviews: bool = True
+    ask_phone_enabled: bool = False
     currency: str = DEFAULT_CURRENCY
     booking_confirmation_text: str | None = None
     cancellation_text: str | None = None

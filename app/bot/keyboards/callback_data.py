@@ -52,6 +52,10 @@ class NavCallback(CallbackData, prefix="nav"):
     target: str  # "main_menu" | "back"
 
 
+class PhoneCallback(CallbackData, prefix="phone"):
+    action: str  # "share": клиент сам решил оставить номер (кнопка в «Мои записи»)
+
+
 class PortfolioCallback(CallbackData, prefix="pf"):
     item_id: int  # какое фото показать (используется и клиентом, и мастером для листания ◀️ ▶️)
 

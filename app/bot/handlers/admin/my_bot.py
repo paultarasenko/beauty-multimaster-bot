@@ -44,7 +44,7 @@ def _kb() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="🔍 Проверить подключение", callback_data=MyBotCallback(action="check").pack())],
             [InlineKeyboardButton(text="🔄 Перерегистрировать webhook", callback_data=MyBotCallback(action="webhook").pack())],
-            [InlineKeyboardButton(text="⬅️ Настройки", callback_data=AdminSettingsCallback(action="menu", field="main", value="none").pack())],
+            [InlineKeyboardButton(text="⬅️ Настройки", callback_data=AdminSettingsCallback(action="menu", field="main2", value="none").pack())],
         ]
     )
 

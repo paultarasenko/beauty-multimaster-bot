@@ -13,6 +13,7 @@ from app.bot.keyboards.callback_data import (
     DateCallback,
     DatesPageCallback,
     NavCallback,
+    PhoneCallback,
     ScheduleBookCallback,
     ServiceCallback,
     TimeCallback,
@@ -22,6 +23,7 @@ from app.bot.keyboards.client_keyboards import (
     limit_reached_keyboard,
     main_menu_keyboard,
     my_booking_keyboard,
+    phone_request_keyboard,
     services_keyboard,
     times_keyboard,
 )
@@ -46,6 +48,7 @@ from app.services.message_texts import booking_template_values, profile_template
 from app.utils.master_settings import client_reminder_phrase
 from app.utils.default_texts import default_confirmation_text
 from app.utils.money import format_money
+from app.utils.phone import normalize_phone
 from app.utils.text_templates import render_template
 from app.utils.timezone import format_date_ru, format_time_range, get_master_tz, to_local, weekday_name_ru
 from app.tenancy import TenantContext, is_owner
@@ -53,6 +56,11 @@ from app.tenancy import TenantContext, is_owner
 router = Router(name="client_booking")
 
 RESTRICTED_TEXT = "🚫 К сожалению, запись для вас сейчас недоступна.\n\nПожалуйста, свяжитесь с мастером."
+
+PHONE_OFFER_TEXT = "📱 Рекомендуем поделиться номером телефона, чтобы мастер мог связаться с вами при необходимости. Поделиться?"
+PHONE_NOT_YOURS_TEXT = "Нужен номер именно вашего аккаунта Telegram. Нажмите кнопку «📱 Да, поделиться номером»."
+PHONE_SAVED_TEXT = "Спасибо, номер сохранён ✅"
+PHONE_DECLINED_TEXT = "Хорошо. Если передумаете, номер можно оставить в разделе «📋 Мои записи»."
 
 
 def _active_bookings_word(count: int) -> str:
@@ -441,6 +449,86 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext, session: A
 
     notifier = MasterNotifier(callback.bot, master_id=tenant.master_id, owner_telegram_id=tenant.master.owner_telegram_id, session=tenant.session)
     await notifier.notify_new_booking(booking, user, tz, currency)
+
+    await _offer_phone_if_needed(
+        callback.message, state, user_repo, user.id, enabled=master_settings.ask_phone_enabled
+    )
+
+
+async def _offer_phone_if_needed(
+    message: Message, state: FSMContext, user_repo: UserRepository, user_id: int, *, enabled: bool
+) -> None:
+    """После записи один раз предлагаем поделиться номером, если мастер включил запрос в настройках.
+
+    «Не сейчас» (или молчание) = сами больше не спрашиваем.
+    """
+    if not enabled:
+        return
+    if await user_repo.get_phone(user_id) is not None or await user_repo.was_phone_offered(user_id):
+        return
+    await user_repo.mark_phone_offered(user_id)
+    await state.set_state(BookingFSM.share_phone)
+    await message.answer(PHONE_OFFER_TEXT, reply_markup=phone_request_keyboard())
+
+
+async def _client_main_menu(session: AsyncSession, tenant: TenantContext, telegram_id: int):
+    """Главное меню клиента: после ответа на предложение возвращаем обычную клавиатуру вместо кнопок «Да» / «Не сейчас»."""
+    tz = await get_master_tz(session, tenant.master_id)
+    user = await UserRepository(session, tenant.master_id).get_by_telegram_id(telegram_id)
+    has_active_booking = False
+    if user is not None:
+        upcoming = await BookingRepository(session, tenant.master_id).get_user_upcoming(user.id, dt.datetime.now(tz))
+        has_active_booking = len(upcoming) > 0
+    return main_menu_keyboard(has_active_booking=has_active_booking, is_admin=is_owner(tenant.master, telegram_id))
+
+
+@router.callback_query(PhoneCallback.filter(F.action == "share"))
+async def share_phone_from_button(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, tenant: TenantContext
+) -> None:
+    """Кнопка в «Мои записи»: клиент передумал и сам хочет оставить номер."""
+    if not (await tenant.get_settings()).ask_phone_enabled:
+        await callback.answer("Сейчас номер не нужен.", show_alert=True)
+        return
+    user_repo = UserRepository(session, tenant.master_id)
+    user = await user_repo.get_by_telegram_id(callback.from_user.id)
+    if user is not None and await user_repo.get_phone(user.id) is not None:
+        await callback.answer("Номер уже сохранён ✅", show_alert=True)
+        return
+    await state.set_state(BookingFSM.share_phone)
+    await callback.message.answer(PHONE_OFFER_TEXT, reply_markup=phone_request_keyboard())
+    await callback.answer()
+
+
+@router.message(BookingFSM.share_phone, F.contact)
+async def receive_phone(message: Message, state: FSMContext, session: AsyncSession, tenant: TenantContext) -> None:
+    contact = message.contact
+    # Принимаем только контакт собственного аккаунта: так номер подтверждён Telegram, а не чужой.
+    phone = normalize_phone(contact.phone_number) if contact.user_id == message.from_user.id else None
+    if phone is None:
+        await message.answer(PHONE_NOT_YOURS_TEXT, reply_markup=phone_request_keyboard())
+        return
+
+    user_repo = UserRepository(session, tenant.master_id)
+    user = await user_repo.get_or_create(
+        telegram_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+    await user_repo.set_phone(user.id, phone)
+    await state.clear()
+    await message.answer(PHONE_SAVED_TEXT, reply_markup=await _client_main_menu(session, tenant, message.from_user.id))
+
+
+@router.message(BookingFSM.share_phone)
+async def phone_other_input(message: Message, state: FSMContext, session: AsyncSession, tenant: TenantContext) -> None:
+    """Любой ответ, кроме контакта: «Не сейчас» выходит в меню, остальное — повторяем предложение."""
+    if (message.text or "").strip() == "Не сейчас":
+        await state.clear()
+        await message.answer(PHONE_DECLINED_TEXT, reply_markup=await _client_main_menu(session, tenant, message.from_user.id))
+        return
+    await message.answer(PHONE_OFFER_TEXT, reply_markup=phone_request_keyboard())
 
 
 @router.callback_query(NavCallback.filter(F.target == "main_menu"))

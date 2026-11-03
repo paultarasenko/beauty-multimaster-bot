@@ -177,6 +177,46 @@ async def _(repo: UserRepository, ns):
     return None
 
 
+@case("UserRepository", "get_phone")
+async def _(repo: UserRepository, ns):
+    # Телефон лежит в связи «клиент — мастер»: клиента B у A нет, а у общего клиента номера у A пока нет.
+    assert await repo.get_phone(ns.only_id[B]) is None
+    assert await repo.get_phone(ns.shared_id) is None
+    await repo.set_phone(ns.shared_id, "+375291234567")
+    assert await repo.get_phone(ns.shared_id) == "+375291234567"
+    return None
+
+
+@case("UserRepository", "set_phone")
+async def _(repo: UserRepository, ns):
+    # Чужого клиента у A нет: вызов ничего не создаёт и не меняет. Общему клиенту номер пишется только в связь с A,
+    # строка этого же человека у B остаётся нетронутой (снимок B ниже).
+    await repo.set_phone(ns.only_id[B], "+375290000000")
+    assert await repo.get_phone(ns.only_id[B]) is None
+    await repo.set_phone(ns.shared_id, "+375291234567")
+    assert await repo.get_phone(ns.shared_id) == "+375291234567"
+    return None
+
+
+@case("UserRepository", "was_phone_offered")
+async def _(repo: UserRepository, ns):
+    assert await repo.was_phone_offered(ns.only_id[B]) is False  # клиента B у A нет
+    assert await repo.was_phone_offered(ns.shared_id) is False
+    await repo.mark_phone_offered(ns.shared_id)
+    assert await repo.was_phone_offered(ns.shared_id) is True
+    return None
+
+
+@case("UserRepository", "mark_phone_offered")
+async def _(repo: UserRepository, ns):
+    # Чужого клиента у A нет: ничего не создаётся. Общему клиенту отметка ставится только в связь с A.
+    await repo.mark_phone_offered(ns.only_id[B])
+    assert await repo.was_phone_offered(ns.only_id[B]) is False
+    await repo.mark_phone_offered(ns.shared_id)
+    assert await repo.was_phone_offered(ns.shared_id) is True
+    return None
+
+
 # ---------------------------------------------------------------- BookingRepository
 
 
