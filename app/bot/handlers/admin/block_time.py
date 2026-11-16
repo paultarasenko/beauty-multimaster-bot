@@ -173,8 +173,8 @@ async def back_to_admin_menu_from_block_dates(callback: CallbackQuery, state: FS
     Заходят в этот флоу из подменю «Записи», поэтому и возвращать нужно туда же
     (admin_bookings_menu_keyboard), а не в корневое админ-меню."""
     await state.clear()
-    await callback.message.delete()
     await callback.message.answer(BOOKINGS_MENU_PROMPT, reply_markup=admin_bookings_menu_keyboard())
+    await callback.message.delete()
     await callback.answer()
 
 

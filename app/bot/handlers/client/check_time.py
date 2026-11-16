@@ -133,8 +133,8 @@ async def ask_which_day_to_book(callback: CallbackQuery, callback_data: Schedule
 @router.callback_query(CheckTimeFSM.select_date, NavCallback.filter(F.target == "back"))
 async def back_to_info_menu(callback: CallbackQuery, state: FSMContext, tenant: TenantContext) -> None:
     await state.clear()
-    await callback.message.delete()
     await callback.message.answer(
         "ℹ️ Выберите действие", reply_markup=info_menu_keyboard(is_admin=is_owner(tenant.master, callback.from_user.id))
     )
+    await callback.message.delete()
     await callback.answer()

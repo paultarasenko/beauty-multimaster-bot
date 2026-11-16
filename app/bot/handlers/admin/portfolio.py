@@ -161,10 +161,10 @@ async def confirm_delete_portfolio_item(
 
     items = await ContentRepository(session, tenant.master_id).get_active_portfolio()
     if not items:
-        await callback.message.delete()
         await callback.message.answer(
             "✅ Фото удалено. Портфолио теперь пусто.", reply_markup=portfolio_admin_empty_keyboard()
         )
+        await callback.message.delete()
         await callback.answer()
         return
 

@@ -534,7 +534,6 @@ async def phone_other_input(message: Message, state: FSMContext, session: AsyncS
 @router.callback_query(NavCallback.filter(F.target == "main_menu"))
 async def go_to_main_menu(callback: CallbackQuery, state: FSMContext, session: AsyncSession, tenant: TenantContext) -> None:
     await state.clear()
-    await callback.message.delete()
 
     tz = await get_master_tz(session, tenant.master_id)
     user_repo = UserRepository(session, tenant.master_id)
@@ -544,12 +543,14 @@ async def go_to_main_menu(callback: CallbackQuery, state: FSMContext, session: A
         upcoming = await BookingRepository(session, tenant.master_id).get_user_upcoming(user.id, dt.datetime.now(tz))
         has_active_booking = len(upcoming) > 0
 
+    # Сначала показываем новое меню, и только потом убираем старое сообщение.
     await callback.message.answer(
         "Выберите действие",
         reply_markup=main_menu_keyboard(
             has_active_booking=has_active_booking, is_admin=is_owner(tenant.master, callback.from_user.id)
         ),
     )
+    await callback.message.delete()
     await callback.answer()
 
 

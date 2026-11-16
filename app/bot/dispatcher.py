@@ -39,6 +39,8 @@ from app.bot.middlewares.error_handling import ErrorHandlingMiddleware
 from app.bot.middlewares.reset_input import ResetInputOnMenuPressMiddleware
 from app.bot.middlewares.storage_guard import FsmStorageGuardMiddleware
 from app.bot.middlewares.tenant import TenantMiddleware
+from app.bot.screen_tracking import ScreenStore
+from app.bot.screens import CommandAsButtonMiddleware, ScreenCleanupMiddleware
 
 
 def default_routers() -> list[Router]:
@@ -121,6 +123,9 @@ def build_dispatcher(
     dp.update.middleware(ErrorHandlingMiddleware())
     dp.update.middleware(DatabaseSessionMiddleware(session_factory))
     dp.update.middleware(TenantMiddleware())  # после сессии БД: кладёт data["tenant"]
+    # Чистый чат и меню команд (app/bot/screens.py): после TenantMiddleware, чтобы отключённым мастерам апдейты не доходили.
+    dp.update.middleware(ScreenCleanupMiddleware(ScreenStore.for_storage(storage)))
+    dp.message.outer_middleware(CommandAsButtonMiddleware())  # раньше сброса ввода: команда становится текстом кнопки
     dp.message.outer_middleware(ResetInputOnMenuPressMiddleware())
 
     for router in default_routers() if routers is None else routers:

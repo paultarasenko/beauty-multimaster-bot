@@ -10,6 +10,7 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 
 from app.config.settings import settings
+from app.bot.screen_tracking import screen_tracking
 from app.multibot.call_guard import call_guard
 
 logger = logging.getLogger(__name__)
@@ -28,4 +29,5 @@ def telegram_session() -> AiohttpSession:
         logger.warning("TELEGRAM_API_BASE задан: запросы к Bot API идут на %s, а не в Telegram (допустимо только в нагрузочном стенде)", base)
         session = AiohttpSession(api=TelegramAPIServer.from_base(base), timeout=timeout)
     session.middleware(call_guard)
+    session.middleware(screen_tracking)  # учёт временных сообщений чата (app/bot/screens.py); вне апдейта ничего не делает
     return session

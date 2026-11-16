@@ -491,6 +491,14 @@ async def show_contact(message: Message, session: AsyncSession, tenant: TenantCo
     await message.answer(f"📞 Написать мастеру: @{contact_username}")
 
 
+async def _delete_stale(callback: CallbackQuery) -> None:
+    """Убирает устаревшее сообщение после показа нового меню; сбой удаления (сообщение старше 48 ч и т.п.) не критичен."""
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+
 @router.callback_query(NavCallback.filter(F.target == "back"))
 async def stale_back_fallback(callback: CallbackQuery, state: FSMContext, session: AsyncSession, tenant: TenantContext) -> None:
     """Подхватывает «⬅️ Назад» тогда, когда ни один из специфичных для конкретного шага
@@ -504,13 +512,11 @@ async def stale_back_fallback(callback: CallbackQuery, state: FSMContext, sessio
     """
     await state.clear()
     await callback.answer("Сессия устарела, начните заново 🙂", show_alert=True)
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
 
+    # Сначала показываем меню, и только потом убираем устаревшее сообщение.
     if await is_admin_mode(session, tenant, callback.from_user.id):
         await callback.message.answer("✨ Админ-панель мастера", reply_markup=admin_menu_keyboard())
+        await _delete_stale(callback)
         return
 
     tz = await get_master_tz(session, tenant.master_id)
@@ -526,3 +532,4 @@ async def stale_back_fallback(callback: CallbackQuery, state: FSMContext, sessio
             has_active_booking=has_active_booking, is_admin=is_owner(tenant.master, callback.from_user.id)
         ),
     )
+    await _delete_stale(callback)

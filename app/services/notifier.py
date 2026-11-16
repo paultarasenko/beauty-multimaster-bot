@@ -6,6 +6,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.screen_tracking import untracked
 from app.database.models import Booking, User
 from app.services.quiet_mode_service import defer_if_quiet
 from app.utils.master_settings import DEFAULT_CURRENCY, count_genitive
@@ -255,7 +256,8 @@ class MasterNotifier:
         if await self._defer_if_quiet(text, markup):
             return True  # запрос дойдёт до мастера после тихого режима
         try:
-            await self.bot.send_message(self.owner_telegram_id, text, reply_markup=markup)
+            with untracked():
+                await self.bot.send_message(self.owner_telegram_id, text, reply_markup=markup)
         except Exception:
             logger.exception("Не удалось отправить запрос клиента мастеру (master_id=%s, owner_telegram_id=%s)", self.master_id, self.owner_telegram_id)
             return False
@@ -281,7 +283,8 @@ class MasterNotifier:
         if await self._defer_if_quiet(text, markup):
             return True  # обращение дойдёт до мастера после тихого режима
         try:
-            await self.bot.send_message(self.owner_telegram_id, text, reply_markup=markup)
+            with untracked():
+                await self.bot.send_message(self.owner_telegram_id, text, reply_markup=markup)
         except Exception:
             logger.exception("Не удалось отправить обращение клиента мастеру (master_id=%s, owner_telegram_id=%s)", self.master_id, self.owner_telegram_id)
             return False
@@ -297,9 +300,10 @@ class MasterNotifier:
         if respect_quiet and await self._defer_if_quiet(text, reply_markup):
             return
         try:
-            if reply_markup is None:
-                await self.bot.send_message(self.owner_telegram_id, text)
-            else:
-                await self.bot.send_message(self.owner_telegram_id, text, reply_markup=reply_markup)
+            with untracked():
+                if reply_markup is None:
+                    await self.bot.send_message(self.owner_telegram_id, text)
+                else:
+                    await self.bot.send_message(self.owner_telegram_id, text, reply_markup=reply_markup)
         except Exception:
             logger.exception("Не удалось отправить уведомление мастеру (master_id=%s, owner_telegram_id=%s)", self.master_id, self.owner_telegram_id)
