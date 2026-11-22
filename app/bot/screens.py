@@ -149,7 +149,7 @@ class ScreenCleanupMiddleware(BaseMiddleware):
                 await self._delete(bot, chat.id, [message.message_id])
             try:
                 # Старые экраны убираем только ПОСЛЕ того, как обработчик показал новый: человек не видит пустой чат.
-                await self._commit(bot, chat.id, scope, prune=navigation and succeeded)
+                await self._commit(bot, chat.id, scope, prune=(navigation or scope.prune) and succeeded)
             except Exception:
                 logger.warning("Экраны чата: не удалось обновить список", exc_info=True)
 

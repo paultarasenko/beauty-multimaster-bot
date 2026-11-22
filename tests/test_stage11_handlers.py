@@ -41,7 +41,7 @@ B_MARKERS = [
 ]
 
 CLIENT_CALLBACKS = {
-    "ServiceCallback", "BookingActionCallback", "ReminderActionCallback", "PortfolioCallback",
+    "ServiceCallback", "ServiceBookCallback", "BookingActionCallback", "ReminderActionCallback", "PortfolioCallback",
 }
 
 # Классы без id сущностей мастера: подделывать нечего — причина обязательна.
@@ -75,6 +75,7 @@ ids_b = lambda ns: dict(  # noqa: E731
 # (класс, поле id, [(остальные поля), ...]) — id подставляется из ids_b / особых источников.
 FORGED: dict[str, tuple[str, list[dict]]] = {
     "ServiceCallback": ("service_id", [{}]),
+    "ServiceBookCallback": ("service_id", [{}]),
     "BookingActionCallback": ("booking_id", [{"action": a} for a in ("cancel", "reschedule", "cancel_confirm", "cancel_back")]),
     "ReminderActionCallback": ("booking_id", [{"action": a} for a in ("still_valid", "reschedule", "cancel")]),
     "PortfolioCallback": ("item_id", [{}]),

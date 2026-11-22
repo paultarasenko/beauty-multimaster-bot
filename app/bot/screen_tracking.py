@@ -83,10 +83,21 @@ class _Scope:
     bot_id: int
     chat_id: int
     new: list[Entry] = field(default_factory=list)
+    prune: bool = False
 
 
 _scope: ContextVar[_Scope | None] = ContextVar("screens_scope", default=None)
 _untracked: ContextVar[bool] = ContextVar("screens_untracked", default=False)
+
+
+def prune_previous_screens() -> None:
+    """Просит убрать прежние временные сообщения чата после обработки этого апдейта — как при переходе по кнопке меню.
+
+    Для inline-кнопки, которая открывает новый раздел (например, «Записаться» под услугой): обычное нажатие inline-кнопки
+    переходом не считается, и прежние экраны остались бы. Удаление идёт уже после того, как новый экран показан."""
+    scope = _scope.get()
+    if scope is not None:
+        scope.prune = True
 
 
 @contextlib.contextmanager

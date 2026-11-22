@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.bot.handlers.admin.about import send_editable_card, show_about_me
 from app.bot.handlers.client.content import get_reviews_summary_text, send_portfolio_view, send_reviews_entry
 from app.bot.keyboards.admin_keyboards import admin_reviews_menu_keyboard
+from app.bot.keyboards.client_keyboards import service_book_keyboard
 from app.bot.menu_mode import is_admin_mode
 from app.bot.middlewares.admin_filter import get_admin_contact_username
 from app.database.repositories.content_repository import ContentRepository
@@ -28,7 +29,7 @@ async def show_price(message: Message, session: AsyncSession, tenant: TenantCont
         text = f"{escape(s.name)}\n\n💰 {format_money(s.price, currency)}\n⏱ ~ {format_duration(s.duration_minutes)}"
         if s.description:
             text += f"\n\n{escape(s.description)}"
-        await message.answer(text)
+        await message.answer(text, reply_markup=service_book_keyboard(s.id))
 
 
 @router.message(F.text == "📸 Портфолио")

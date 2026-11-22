@@ -30,6 +30,7 @@ from app.bot.keyboards.client_keyboards import (
     review_rating_keyboard,
     reviews_entry_keyboard,
     reviews_list_keyboard,
+    service_book_keyboard,
 )
 from app.bot.menu_mode import is_admin_mode
 from app.bot.middlewares.admin_filter import get_admin_contact_username
@@ -130,7 +131,7 @@ async def show_price(message: Message, session: AsyncSession, tenant: TenantCont
         text = f"{escape(s.name)}\n\n💰 {format_money(s.price, currency)}\n⏱ ~ {format_duration(s.duration_minutes)}"
         if s.description:
             text += f"\n\n{escape(s.description)}"
-        await message.answer(text)
+        await message.answer(text, reply_markup=service_book_keyboard(s.id))
 
 
 PORTFOLIO_CAPTION_LIMIT = 1024  # лимит Telegram на подпись к фото

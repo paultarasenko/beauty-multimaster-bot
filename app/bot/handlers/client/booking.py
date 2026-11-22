@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.calendar_view import calendar_markup, calendar_notice, edit_calendar, has_free_dates
+from app.bot.calendar_view import calendar_markup, calendar_notice, calendar_text, edit_calendar, has_free_dates
 from app.bot.keyboards.callback_data import (
     CalendarCallback,
     ConfirmCallback,
@@ -15,6 +15,7 @@ from app.bot.keyboards.callback_data import (
     NavCallback,
     PhoneCallback,
     ScheduleBookCallback,
+    ServiceBookCallback,
     ServiceCallback,
     TimeCallback,
 )
@@ -28,6 +29,7 @@ from app.bot.keyboards.client_keyboards import (
     times_keyboard,
 )
 from app.bot.middlewares.admin_filter import get_admin_contact_username
+from app.bot.screen_tracking import prune_previous_screens
 from app.bot.states.booking_states import BookingFSM
 from app.database.repositories.booking_repository import BookingRepository
 from app.database.repositories.service_repository import ServiceRepository
@@ -195,6 +197,40 @@ async def start_booking_for_day(
     await _show_service_selection(
         callback.message.answer, state, session, preselected_date=day, telegram_id=callback.from_user.id, tenant=tenant
     )
+    await callback.answer()
+
+
+@router.callback_query(ServiceBookCallback.filter())
+async def start_booking_for_service(
+    callback: CallbackQuery, callback_data: ServiceBookCallback, state: FSMContext, session: AsyncSession, tenant: TenantContext
+) -> None:
+    """«Записаться» под услугой в «Услугах и ценах»: выбор услуги пропускается, сразу календарь для неё.
+
+    Календарь уходит новым сообщением, а прайс (все карточки услуг) убирается после него — как при переходе по кнопке
+    меню: в чате остаётся только календарь."""
+    if reason := await _booking_block_reason(session, callback.from_user.id, tenant=tenant):
+        await state.clear()
+        text, is_limit = reason
+        await callback.message.answer(text, reply_markup=limit_reached_keyboard() if is_limit else None)
+        await callback.answer()
+        return
+
+    service = await ServiceRepository(session, tenant.master_id).get_by_id(callback_data.service_id)
+    if service is None or not service.active:
+        await callback.answer("Эта услуга больше недоступна.", show_alert=True)
+        return
+
+    tz = await get_master_tz(session, tenant.master_id)
+    if not await has_free_dates(session, tenant, tz, service.occupied_minutes):
+        await callback.message.answer("К сожалению, свободных дат пока нет. Попробуйте позже.")
+        await callback.answer()
+        return
+
+    await state.set_state(BookingFSM.select_date)
+    await state.update_data(service_id=service.id, preselected_date=None)
+    markup = await calendar_markup(session, tenant, tz, dt.datetime.now(tz).date(), duration=service.occupied_minutes)
+    await callback.message.answer(calendar_text(f"{escape(service.name)}\n\n📅 Выберите дату:"), reply_markup=markup)
+    prune_previous_screens()
     await callback.answer()
 
 

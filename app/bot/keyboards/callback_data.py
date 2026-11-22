@@ -38,6 +38,12 @@ class ScheduleBookCallback(CallbackData, prefix="sbk"):
     date: str  # ISO YYYY-MM-DD
 
 
+class ServiceBookCallback(CallbackData, prefix="svb"):
+    """Кнопка «Записаться» под сообщением услуги в «Услуги и цены»: запись сразу на эту услугу."""
+
+    service_id: int
+
+
 class BookingActionCallback(CallbackData, prefix="booking"):
     booking_id: int
     action: str  # "cancel" | "reschedule" | "cancel_confirm" | "cancel_back"

@@ -18,6 +18,7 @@ from app.bot.keyboards.callback_data import (
     ReviewsCallback,
     ReviewsPageCallback,
     ScheduleBookCallback,
+    ServiceBookCallback,
     ServiceCallback,
     TimeCallback,
 )
@@ -392,6 +393,15 @@ def start_booking_inline_keyboard(selected_date: dt.date | None = None) -> Inlin
         else ScheduleBookCallback(action="ask", date=selected_date.isoformat()).pack()
     )
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📅 Записаться", callback_data=callback_data)]])
+
+
+def service_book_keyboard(service_id: int) -> InlineKeyboardMarkup:
+    """Кнопка «Записаться» под сообщением услуги в «Услуги и цены»: сразу на эту услугу, без выбора из списка."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📅 Записаться", callback_data=ServiceBookCallback(service_id=service_id).pack())]
+        ]
+    )
 
 
 def booking_day_choice_keyboard(selected_date: dt.date) -> InlineKeyboardMarkup:
