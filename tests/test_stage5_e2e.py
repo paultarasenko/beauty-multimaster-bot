@@ -9,7 +9,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from aiogram.fsm.storage.base import StorageKey
-from aiogram.methods import AnswerCallbackQuery, SendMessage
+from aiogram.methods import AnswerCallbackQuery, SendMessage, SetChatMenuButton, SetMyCommands
 from cryptography.fernet import Fernet
 from sqlalchemy import select
 
@@ -238,7 +238,8 @@ async def test_owner_a_restricts_client_only_at_a_and_has_no_rights_in_bot_b(bot
     await bots.press(BOT_B, OWNER_A, AdminClientAccessCallback(user_id=client_id, action="restrict"))  # в боте B он не владелец
     assert (await client_row(session, client_id, A)).is_restricted is False
     assert (await client_row(session, client_id, B)).is_restricted is False
-    assert bots.tg.per_bot.get(BOT_B, []) == []  # бот B не отреагировал вовсе
+    # Бот B не отреагировал на нажатие. Команды и кнопку меню бот выставляет сам при первом апдейте (один раз на бота, app/bot/screens.py), это не реакция.
+    assert [m for m in bots.tg.per_bot.get(BOT_B, []) if not isinstance(m, (SetMyCommands, SetChatMenuButton))] == []
 
     await bots.press(BOT_A, OWNER_A, AdminClientAccessCallback(user_id=client_id, action="restrict"))
     assert (await client_row(session, client_id, A)).is_restricted is True
